@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/mail"
-	"regexp"
+	"unicode"
 	"strings"
 	"time"
 
@@ -19,8 +19,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
-
-var passwordPolicy = regexp.MustCompile(`^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$`)
 
 type UserService struct {
 	queries      *sqlc.Queries
@@ -223,7 +221,7 @@ func validateCreateUser(input CriarUsuarioInput) error {
 		detalhes = append(detalhes, apperror.Detail{Campo: "email", Mensagem: "Formato de email inválido"})
 	}
 
-	if !passwordPolicy.MatchString(input.Senha) {
+	if !isPasswordValid(input.Senha) {
 		detalhes = append(detalhes, apperror.Detail{Campo: "senha", Mensagem: "Senha fora da política mínima"})
 	}
 
@@ -232,6 +230,34 @@ func validateCreateUser(input CriarUsuarioInput) error {
 	}
 
 	return nil
+}
+
+func isPasswordValid(password string) bool {
+	if len(password) < 8 {
+		return false
+	}
+
+	hasLower := false
+	hasUpper := false
+	hasDigit := false
+	hasSpecial := false
+
+	for _, r := range password {
+		switch {
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case strings.ContainsRune("@$!%*?&", r):
+			hasSpecial = true
+		default:
+			return false
+		}
+	}
+
+	return hasLower && hasUpper && hasDigit && hasSpecial
 }
 
 func isUniqueViolation(err error) bool {
