@@ -1,0 +1,1048 @@
+openapi: 3.0.3
+info:
+  title: API de Programa de Fidelidade
+  description: API para gerenciamento de programas de fidelidade com sistema de selos
+  version: 1.0.0
+  contact:
+    name: Equipe de Desenvolvimento
+    email: dev@fidelidadeapp.com
+
+servers:
+  - url: https://api.fidelidadeapp.com/v1
+    description: Servidor de produção
+  - url: https://staging.fidelidadeapp.com/v1
+    description: Servidor de homologação
+  - url: http://localhost:3000/v1
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: Usuários
+    description: Gerenciamento de usuários
+  - name: Programas
+    description: Gerenciamento de programas de fidelidade
+  - name: Selos
+    description: Gerenciamento de selos
+  - name: QR Codes
+    description: Validação de QR codes
+
+paths:
+  # ============ USUÁRIOS ============
+  /usuarios:
+    post:
+      tags:
+        - Usuários
+      summary: Criar novo usuário
+      description: Registra um novo usuário no sistema
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarUsuarioRequest"
+            example:
+              nome: "Maria Silva"
+              email: "maria.silva@email.com"
+              senha: "Senha123!@"
+      responses:
+        "201":
+          description: Usuário criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usuario"
+              example:
+                id: "usr_a1b2c3d4"
+                nome: "Maria Silva"
+                email: "maria.silva@email.com"
+                imagemPerfil: "https://storage.fidelidadeapp.com/perfil/default_avatar.png"
+                ativo: true
+                dataCriacao: "2024-01-15T10:30:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Email já cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+              example:
+                codigo: "EMAIL_DUPLICADO"
+                mensagem: "Este email já está em uso"
+
+  /usuarios/autenticacao:
+    post:
+      tags:
+        - Usuários
+      summary: Autenticar usuário
+      description: Realiza login e retorna token de acesso
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutenticacaoRequest"
+            example:
+              email: "maria.silva@email.com"
+              senha: "Senha123!@"
+      responses:
+        "200":
+          description: Autenticação realizada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutenticacaoResponse"
+              example:
+                token: "eyJhbGciOiJIUzI1NiIs..."
+                usuario:
+                  id: "usr_a1b2c3d4"
+                  nome: "Maria Silva"
+                  email: "maria.silva@email.com"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /usuarios/{usuarioId}:
+    get:
+      tags:
+        - Usuários
+      summary: Obter dados do usuário
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+      responses:
+        "200":
+          description: Dados do usuário
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usuario"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags:
+        - Usuários
+      summary: Atualizar dados do usuário
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AtualizarUsuarioRequest"
+            example:
+              nome: "Maria Silva Santos"
+              imagemPerfil: "https://storage.fidelidadeapp.com/perfil/maria_nova_foto.jpg"
+      responses:
+        "200":
+          description: Usuário atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usuario"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /usuarios/{usuarioId}/excluir:
+    delete:
+      tags:
+        - Usuários
+      summary: Excluir conta do usuário
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+      responses:
+        "204":
+          description: Conta excluída com sucesso
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ============ IMAGEM DE PERFIL ============
+  /usuarios/{usuarioId}/imagem:
+    post:
+      tags:
+        - Usuários
+      summary: Upload de imagem de perfil
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                imagem:
+                  type: string
+                  format: binary
+                  description: Imagem de perfil (JPEG, PNG, máximo 5MB)
+      responses:
+        "200":
+          description: Imagem atualizada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imagemUrl:
+                    type: string
+                    format: uri
+                    example: "https://storage.fidelidadeapp.com/perfil/usr_a1b2c3d4_image.jpg"
+        "413":
+          description: Imagem muito grande
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+
+  # ============ PROGRAMAS ============
+  /programas:
+    get:
+      tags:
+        - Programas
+      summary: Listar programas próximos ao usuário
+      description: Retorna programas ativos baseado na localização do usuário
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+          description: Latitude do usuário
+          example: -23.550520
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+          description: Longitude do usuário
+          example: -46.633308
+        - name: raio
+          in: query
+          schema:
+            type: integer
+            default: 5000
+            minimum: 1000
+            maximum: 50000
+          description: Raio de busca em metros
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Número da página
+        - name: limite
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+          description: Itens por página
+      responses:
+        "200":
+          description: Lista de programas próximos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaProgramasResponse"
+              example:
+                programas:
+                  - id: "prog_b4c5d6e7"
+                    estabelecimento: "Café do Centro"
+                    lat: -23.550520
+                    lng: -46.633308
+                    distancia: 150
+                    selosNecessarios: 10
+                    selosAtuais: 3
+                    recompensa:
+                      nome: "Café Expresso Grátis"
+                      imagem: "https://storage.fidelidadeapp.com/recompensas/cafe_gratis.jpg"
+                      descricao: "Um delicioso café expresso 100% arábica"
+                    descricao: "A cada café, ganhe um selo!"
+                    regras: "Válido para compras acima de R$15,00. Máximo 1 selo por dia."
+                    ativo: true
+                    dataInicio: "2024-01-01T00:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /programas/{programaId}:
+    get:
+      tags:
+        - Programas
+      summary: Obter detalhes do programa
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProgramaId"
+      responses:
+        "200":
+          description: Detalhes do programa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramaDetalhado"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /usuarios/{usuarioId}/programas/ativos:
+    get:
+      tags:
+        - Programas
+      summary: Listar programas ativos do usuário
+      description: Programas onde o usuário tem pelo menos um selo e o programa está ativo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+      responses:
+        "200":
+          description: Lista de programas ativos do usuário
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaProgramasUsuarioResponse"
+              example:
+                programas:
+                  - programaId: "prog_b4c5d6e7"
+                    estabelecimento: "Café do Centro"
+                    selosNecessarios: 10
+                    selosObtidos: 7
+                    selosRestantes: 3
+                    progresso: 70
+                    ultimoSelo: "2024-01-15T14:30:00Z"
+                    proximoAoConcluir: false
+                    recompensa:
+                      nome: "Café Expresso Grátis"
+                      imagem: "https://storage.fidelidadeapp.com/recompensas/cafe_gratis.jpg"
+
+  /usuarios/{usuarioId}/programas/finalizados:
+    get:
+      tags:
+        - Programas
+      summary: Listar programas finalizados do usuário
+      description: Programas onde o usuário completou todos os selos ou o programa foi finalizado
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [completo, expirado, resgatado]
+          description: Filtrar por status do programa
+      responses:
+        "200":
+          description: Lista de programas finalizados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaProgramasFinalizadosResponse"
+              example:
+                programas:
+                  - programaId: "prog_c5d6e7f8"
+                    estabelecimento: "Padaria Pão Quente"
+                    dataFinalizacao: "2024-01-10T12:00:00Z"
+                    status: "completo"
+                    recompensa:
+                      nome: "Cesta de Pães Artesanais"
+                      imagem: "https://storage.fidelidadeapp.com/recompensas/cesta_paes.jpg"
+                      resgatada: true
+                      dataResgate: "2024-01-11T15:30:00Z"
+
+  /usuarios/{usuarioId}/programas/ultimo-selo:
+    get:
+      tags:
+        - Programas
+      summary: Último programa que recebeu selo
+      description: Retorna o programa mais recente onde o usuário ganhou um selo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+      responses:
+        "200":
+          description: Último programa com selo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramaComUltimoSelo"
+              example:
+                programaId: "prog_b4c5d6e7"
+                estabelecimento: "Café do Centro"
+                selosNecessarios: 10
+                selosObtidos: 7
+                ultimoSelo:
+                  id: "selo_a1b2c3d4"
+                  dataAquisicao: "2024-01-15T14:30:00Z"
+                  validado: true
+        "204":
+          description: Nenhum selo encontrado
+
+  # ============ SELOS ============
+  /usuarios/{usuarioId}/programas/{programaId}/selos:
+    get:
+      tags:
+        - Selos
+      summary: Listar selos de um programa
+      description: Lista todos os selos do usuário em um programa específico
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+        - $ref: "#/components/parameters/ProgramaId"
+      responses:
+        "200":
+          description: Lista de selos do programa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaSelosResponse"
+              example:
+                selos:
+                  - id: "selo_a1b2c3d4"
+                    dataAquisicao: "2024-01-15T14:30:00Z"
+                    chaveValidacao: "QR20240115ABC123"
+                    estabelecimento: "Café do Centro"
+                    sequencia: 7
+                totalSelos: 7
+                selosNecessarios: 10
+                selosRestantes: 3
+                progresso: 70
+
+    post:
+      tags:
+        - Selos
+      summary: Ganhar selo para um programa
+      description: Registra um novo selo após escaneamento de QR code válido
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+        - $ref: "#/components/parameters/ProgramaId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GanharSeloRequest"
+            example:
+              qrCodeData: "eyJwcm9ncmFtYUlkIjoicHJvZ19iNGM1ZDZlNyIsImVzdGFiZWxlY2ltZW50b0lkIjoiZXN0X2ExYjJjM2Q0IiwiY2FyaW1ibyI6IjEyMzQ1Njc4OTAiLCJ0aW1lc3RhbXAiOiIyMDI0LTAxLTE1VDE0OjMwOjAwWiJ9"
+      responses:
+        "201":
+          description: Selo adicionado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeloResponse"
+              example:
+                selo:
+                  id: "selo_a1b2c3d4"
+                  programaId: "prog_b4c5d6e7"
+                  dataAquisicao: "2024-01-15T14:30:00Z"
+                  chaveValidacao: "QR20240115ABC123"
+                  sequencia: 7
+                completouPrograma: false
+                selosRestantes: 3
+                progresso: 70
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Selo já registrado ou limite diário atingido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+              example:
+                codigo: "SELO_JA_REGISTRADO"
+                mensagem: "Este QR code já foi utilizado"
+
+  # ============ QR CODE ============
+  /qr-codes/validar:
+    post:
+      tags:
+        - QR Codes
+      summary: Validar QR code
+      description: Valida se o QR code escaneado é válido antes de conceder o selo
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidarQRCodeRequest"
+            example:
+              qrCodeData: "eyJwcm9ncmFtYUlkIjoicHJvZ19iNGM1ZDZlNyIsImVzdGFiZWxlY2ltZW50b0lkIjoiZXN0X2ExYjJjM2Q0IiwiY2FyaW1ibyI6IjEyMzQ1Njc4OTAiLCJ0aW1lc3RhbXAiOiIyMDI0LTAxLTE1VDE0OjMwOjAwWiJ9"
+      responses:
+        "200":
+          description: QR code válido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QRCodeValidationResponse"
+              example:
+                valido: true
+                programa:
+                  id: "prog_b4c5d6e7"
+                  estabelecimento: "Café do Centro"
+                  recompensa:
+                    nome: "Café Expresso Grátis"
+                  selosRestantes: 3
+        "400":
+          description: QR code inválido ou expirado
+
+  # ============ RECOMPENSAS ============
+  /usuarios/{usuarioId}/recompensas:
+    get:
+      tags:
+        - Usuários
+      summary: Listar recompensas disponíveis
+      description: Programas completados com recompensas ainda não resgatadas
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+      responses:
+        "200":
+          description: Recompensas disponíveis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaRecompensasResponse"
+              example:
+                recompensas:
+                  - programaId: "prog_b4c5d6e7"
+                    estabelecimento: "Café do Centro"
+                    recompensa:
+                      nome: "Café Expresso Grátis"
+                      imagem: "https://storage.fidelidadeapp.com/recompensas/cafe_gratis.jpg"
+                      descricao: "Um delicioso café expresso 100% arábica"
+                    dataConclusao: "2024-01-15T14:30:00Z"
+                    expiraEm: "2024-02-15T14:30:00Z"
+
+  /usuarios/{usuarioId}/programas/{programaId}/resgatar:
+    post:
+      tags:
+        - Usuários
+      summary: Resgatar recompensa
+      description: Marca recompensa como resgatada no estabelecimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UsuarioId"
+        - $ref: "#/components/parameters/ProgramaId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                codigoResgate:
+                  type: string
+                  description: Código de resgate gerado pelo app
+              example:
+                codigoResgate: "RESG20240115ABC456"
+      responses:
+        "200":
+          description: Recompensa resgatada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sucesso:
+                    type: boolean
+                  dataResgate:
+                    type: string
+                    format: date-time
+                example:
+                  sucesso: true
+                  dataResgate: "2024-01-15T15:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT obtido na autenticação
+
+  parameters:
+    UsuarioId:
+      name: usuarioId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^usr_[a-zA-Z0-9]{8}$"
+      description: ID do usuário
+      example: "usr_a1b2c3d4"
+
+    ProgramaId:
+      name: programaId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^prog_[a-zA-Z0-9]{8}$"
+      description: ID do programa
+      example: "prog_b4c5d6e7"
+
+  schemas:
+    # Usuário
+    CriarUsuarioRequest:
+      type: object
+      required:
+        - nome
+        - email
+        - senha
+      properties:
+        nome:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: "Maria Silva"
+        email:
+          type: string
+          format: email
+          example: "maria.silva@email.com"
+        senha:
+          type: string
+          format: password
+          minLength: 8
+          pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+          description: Mínimo 8 caracteres, deve conter maiúscula, minúscula, número e caractere especial
+          example: "Senha123!@"
+
+    AtualizarUsuarioRequest:
+      type: object
+      properties:
+        nome:
+          type: string
+          minLength: 3
+          maxLength: 100
+        imagemPerfil:
+          type: string
+          format: uri
+
+    Usuario:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^usr_[a-zA-Z0-9]{8}$"
+        nome:
+          type: string
+        email:
+          type: string
+          format: email
+        imagemPerfil:
+          type: string
+          format: uri
+        ativo:
+          type: boolean
+        dataCriacao:
+          type: string
+          format: date-time
+        dataAtualizacao:
+          type: string
+          format: date-time
+
+    AutenticacaoRequest:
+      type: object
+      required:
+        - email
+        - senha
+      properties:
+        email:
+          type: string
+          format: email
+        senha:
+          type: string
+          format: password
+
+    AutenticacaoResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Token JWT de acesso
+        usuario:
+          $ref: "#/components/schemas/Usuario"
+
+    # Programa
+    Programa:
+      type: object
+      required:
+        - estabelecimento
+        - lat
+        - lng
+        - selosNecessarios
+        - recompensa
+        - descricao
+        - regras
+      properties:
+        id:
+          type: string
+          pattern: "^prog_[a-zA-Z0-9]{8}$"
+        estabelecimento:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: "Café do Centro"
+        lat:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          example: -23.550520
+        lng:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+          example: -46.633308
+        selosNecessarios:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 10
+        recompensa:
+          $ref: "#/components/schemas/Recompensa"
+        descricao:
+          type: string
+          maxLength: 500
+          example: "A cada café, ganhe um selo!"
+        regras:
+          type: string
+          maxLength: 1000
+          example: "Válido para compras acima de R$15,00. Máximo 1 selo por dia."
+        ativo:
+          type: boolean
+          default: true
+        dataInicio:
+          type: string
+          format: date-time
+        dataFim:
+          type: string
+          format: date-time
+
+    ProgramaDetalhado:
+      allOf:
+        - $ref: "#/components/schemas/Programa"
+        - type: object
+          properties:
+            selosAtuais:
+              type: integer
+              description: Selos que o usuário atual possui (se autenticado)
+            distancia:
+              type: number
+              description: Distância do usuário em metros
+
+    ProgramaComUltimoSelo:
+      type: object
+      properties:
+        programaId:
+          type: string
+        estabelecimento:
+          type: string
+        selosNecessarios:
+          type: integer
+        selosObtidos:
+          type: integer
+        ultimoSelo:
+          $ref: "#/components/schemas/Selo"
+
+    Recompensa:
+      type: object
+      required:
+        - nome
+        - descricao
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: "Café Expresso Grátis"
+        imagem:
+          type: string
+          format: uri
+          example: "https://storage.fidelidadeapp.com/recompensas/cafe_gratis.jpg"
+        descricao:
+          type: string
+          maxLength: 500
+          example: "Um delicioso café expresso 100% arábica"
+
+    # Selo
+    Selo:
+      type: object
+      required:
+        - programaId
+        - dataAquisicao
+        - chaveValidacao
+      properties:
+        id:
+          type: string
+          pattern: "^selo_[a-zA-Z0-9]{8}$"
+        programaId:
+          type: string
+        usuarioId:
+          type: string
+        dataAquisicao:
+          type: string
+          format: date-time
+        chaveValidacao:
+          type: string
+          description: Chave única de validação do QR code
+        sequencia:
+          type: integer
+          description: Número sequencial do selo no programa
+        validado:
+          type: boolean
+
+    GanharSeloRequest:
+      type: object
+      required:
+        - qrCodeData
+      properties:
+        qrCodeData:
+          type: string
+          description: Dados do QR code escaneado
+          example: "eyJwcm9ncmFtYUlkIjoicHJvZ19iNGM1ZDZlNyJ9"
+
+    SeloResponse:
+      type: object
+      properties:
+        selo:
+          $ref: "#/components/schemas/Selo"
+        completouPrograma:
+          type: boolean
+          description: Indica se o programa foi completado
+        selosRestantes:
+          type: integer
+          description: Selos restantes para completar
+        progresso:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Porcentagem de progresso
+
+    # QR Code
+    ValidarQRCodeRequest:
+      type: object
+      required:
+        - qrCodeData
+      properties:
+        qrCodeData:
+          type: string
+          description: Dados do QR code a ser validado
+
+    QRCodeValidationResponse:
+      type: object
+      properties:
+        valido:
+          type: boolean
+        programa:
+          type: object
+          properties:
+            id:
+              type: string
+            estabelecimento:
+              type: string
+            recompensa:
+              $ref: "#/components/schemas/Recompensa"
+            selosRestantes:
+              type: integer
+        mensagem:
+          type: string
+          description: Mensagem informativa em caso de erro
+
+    # Responses com lista
+    ListaProgramasResponse:
+      type: object
+      properties:
+        programas:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProgramaDetalhado"
+        total:
+          type: integer
+        pagina:
+          type: integer
+        totalPaginas:
+          type: integer
+
+    ListaProgramasUsuarioResponse:
+      type: object
+      properties:
+        programas:
+          type: array
+          items:
+            type: object
+            properties:
+              programaId:
+                type: string
+              estabelecimento:
+                type: string
+              selosNecessarios:
+                type: integer
+              selosObtidos:
+                type: integer
+              selosRestantes:
+                type: integer
+              progresso:
+                type: integer
+              ultimoSelo:
+                type: string
+                format: date-time
+              proximoAoConcluir:
+                type: boolean
+              recompensa:
+                $ref: "#/components/schemas/Recompensa"
+
+    ListaProgramasFinalizadosResponse:
+      type: object
+      properties:
+        programas:
+          type: array
+          items:
+            type: object
+            properties:
+              programaId:
+                type: string
+              estabelecimento:
+                type: string
+              dataFinalizacao:
+                type: string
+                format: date-time
+              status:
+                type: string
+                enum: [completo, expirado, resgatado]
+              recompensa:
+                allOf:
+                  - $ref: "#/components/schemas/Recompensa"
+                  - type: object
+                    properties:
+                      resgatada:
+                        type: boolean
+                      dataResgate:
+                        type: string
+                        format: date-time
+
+    ListaSelosResponse:
+      type: object
+      properties:
+        selos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Selo"
+        totalSelos:
+          type: integer
+        selosNecessarios:
+          type: integer
+        selosRestantes:
+          type: integer
+        progresso:
+          type: integer
+
+    ListaRecompensasResponse:
+      type: object
+      properties:
+        recompensas:
+          type: array
+          items:
+            type: object
+            properties:
+              programaId:
+                type: string
+              estabelecimento:
+                type: string
+              recompensa:
+                $ref: "#/components/schemas/Recompensa"
+              dataConclusao:
+                type: string
+                format: date-time
+              expiraEm:
+                type: string
+                format: date-time
+
+    # Erros
+    Erro:
+      type: object
+      properties:
+        codigo:
+          type: string
+          description: Código do erro
+        mensagem:
+          type: string
+          description: Descrição do erro
+        detalhes:
+          type: array
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              mensagem:
+                type: string
+          description: Detalhes de validação por campo
+
+  responses:
+    BadRequest:
+      description: Requisição inválida
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            codigo: "VALIDACAO_FALHA"
+            mensagem: "Dados inválidos"
+            detalhes:
+              - campo: "email"
+                mensagem: "Formato de email inválido"
+
+    Unauthorized:
+      description: Não autorizado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            codigo: "NAO_AUTORIZADO"
+            mensagem: "Token inválido ou expirado"
+
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            codigo: "NAO_ENCONTRADO"
+            mensagem: "Recurso não encontrado"
+
+    Forbidden:
+      description: Acesso proibido
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            codigo: "ACESSO_PROIBIDO"
+            mensagem: "Você não tem permissão para acessar este recurso"
