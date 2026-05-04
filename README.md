@@ -70,6 +70,8 @@ go test ./...
 
 ## Endpoints implementados
 
+- `GET /openapi.yaml`
+- `GET /docs`
 - `POST /v1/usuarios`
 - `POST /v1/usuarios/autenticacao`
 - `GET /v1/usuarios/:usuarioId`

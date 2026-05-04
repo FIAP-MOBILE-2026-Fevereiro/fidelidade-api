@@ -14,6 +14,7 @@ WORKDIR /app
 
 COPY --from=builder /bin/api /usr/local/bin/api
 COPY db/migrations ./db/migrations
+COPY openapi.yaml ./openapi.yaml
 
 EXPOSE 3000
 

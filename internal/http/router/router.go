@@ -21,6 +21,26 @@ type Dependencies struct {
 	QRHandler      *handler.QRHandler
 }
 
+const redocHTML = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>API de Programa de Fidelidade - Documentacao</title>
+	<style>
+		body {
+			margin: 0;
+			padding: 0;
+		}
+	</style>
+</head>
+<body>
+	<redoc spec-url="/openapi.yaml"></redoc>
+	<script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+</body>
+</html>
+`
+
 func New(deps Dependencies) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
@@ -34,6 +54,16 @@ func New(deps Dependencies) *gin.Engine {
 	router.MaxMultipartMemory = deps.Config.MaxUploadSizeBytes
 	router.GET("/health", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	router.GET("/openapi.yaml", func(ctx *gin.Context) {
+		ctx.Header("Content-Type", "application/yaml; charset=utf-8")
+		ctx.File("openapi.yaml")
+	})
+	router.GET("/docs", func(ctx *gin.Context) {
+		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(redocHTML))
+	})
+	router.GET("/docs/", func(ctx *gin.Context) {
+		ctx.Data(http.StatusOK, "text/html; charset=utf-8", []byte(redocHTML))
 	})
 	router.StaticFS("/uploads", http.Dir(deps.Config.UploadDir))
 
